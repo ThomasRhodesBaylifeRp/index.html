@@ -72,6 +72,16 @@ body.pl-on .player{display:flex}
 .pc{display:flex;gap:4px;margin-top:6px}
 .pc button{width:38px;height:36px;border:1px solid var(--line);background:transparent;color:var(--tx);border-radius:9px;font-size:.95rem;cursor:pointer;padding:0}
 .pc button.on{background:var(--ac);border-color:var(--ac);color:var(--acx)}
+.radio{display:flex;flex-wrap:wrap;gap:8px}
+.vol{display:flex;align-items:center;gap:8px;margin-top:8px}
+.vol button{width:38px;height:32px;border:1px solid var(--line);background:transparent;color:var(--tx);border-radius:9px;cursor:pointer;padding:0}
+.vol input{flex:1;min-width:0;accent-color:var(--ac)}
+.live{font-size:.72rem;font-weight:800;color:var(--ac);letter-spacing:.06em;margin-top:2px}
+.gate{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.82);display:grid;place-items:center;padding:20px}
+.gate[hidden]{display:none}
+.gbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px;text-align:center;max-width:340px}
+.gbox h2{margin:0 0 8px}.gbox p{color:var(--mut);margin:0 0 18px}
+body.pl-on .wrap{padding-bottom:210px}
 </style>
 </head>
 <body>
@@ -84,7 +94,7 @@ body.pl-on .player{display:flex}
       <div class="kind">Playlist</div>
       <h1 id="title" contenteditable="true" spellcheck="false">Rap FR</h1>
       <div class="sub"><span id="count"></span><button id="rm" hidden>Retirer la photo</button></div>
-      <div class="radio"><button class="add" id="radio">▶ Mode radio</button></div>
+      <div class="radio"><button class="add" id="live">🔴 Radio en direct</button><button class="cancel" id="radio">▶ Ma playlist</button><button class="cancel" id="rlink">🔗 Copier le lien de la radio</button></div>
     </div>
   </div>
   <input type="file" id="file" accept="image/*">
@@ -98,10 +108,12 @@ body.pl-on .player{display:flex}
 <div class="player" id="player">
   <div class="pv" id="pslot"></div>
   <div class="pr">
-    <div class="pt" id="pt"></div><div class="pa" id="pa"></div>
+    <div class="pt" id="pt"></div><div class="pa" id="pa"></div><div class="live" id="pLive" hidden>🔴 EN DIRECT</div>
     <div class="pc"><button id="pPrev" aria-label="Précédent">⏮</button><button id="pPlay" aria-label="Lecture/pause">⏸</button><button id="pNext" aria-label="Suivant">⏭</button><button id="pShuf" aria-label="Aléatoire">🔀</button><button id="pX" aria-label="Fermer la radio">✕</button></div>
+    <div class="vol"><button id="pMute" aria-label="Couper le son">🔊</button><input type="range" id="pVol" min="0" max="100" value="80" aria-label="Volume"></div>
   </div>
 </div>
+<div class="gate" id="gate" hidden><div class="gbox"><h2>🔴 Radio en direct</h2><p>Appuie pour écouter la radio.</p><button class="add" id="gateGo">▶ Écouter</button></div></div>
 <div id="toast"></div>
 <script>
 const V="https://www.youtube.com/watch?v=";
@@ -223,7 +235,7 @@ $("#save").onclick=()=>{
   rebuild();["#fTitle","#fArtist","#fUrl"].forEach(s=>$(s).value="");$("#panel").classList.remove("on");renderChips();render();
 };
 /* ----- mode radio ----- */
-let errs=0,Q=[],pos=-1,cur=-1,shuf=false,ifr=null,lastEnd=0,playing=false,listenTimer=null;
+let errs=0,Q=[],pos=-1,cur=-1,shuf=false,ifr=null,lastEnd=0,playing=false,listenTimer=null,live=false,liveCycle=0,vol=80,muted=false;
 const vid=u=>{const m=u.match(/(?:youtu\.be\/|[?&]v=|shorts\/|embed\/)([\w-]{11})/);return m?m[1]:null};
 function build(first){
   let ids=vis();if(!ids.length)ids=DB.map((_,i)=>i);
@@ -244,10 +256,10 @@ function ui(){
   const r=DB[cur];
   if(r){$("#pt").textContent=r[1];$("#pa").textContent=r[0]}
   $("#pPlay").textContent=playing?"⏸":"▶";
-  $("#pShuf").classList.toggle("on",shuf);
+  $("#pShuf").classList.toggle("on",shuf);$("#pLive").hidden=!live;$("#pPrev").hidden=live;$("#pShuf").hidden=live;
   render();
 }
-function playAt(p,t){
+function playAt(p,t,st){st=st||0;
   t=t||0;if(!Q.length)return;
   pos=(p%Q.length+Q.length)%Q.length;
   const i=Q[pos],id=vid(DB[i][2]);
@@ -258,17 +270,17 @@ function playAt(p,t){
     ifr=document.createElement("iframe");
     ifr.allow="autoplay; encrypted-media; picture-in-picture";ifr.setAttribute("allowfullscreen","");
     let o="";try{if(location.origin&&location.origin!=="null")o="&origin="+encodeURIComponent(location.origin)}catch(e){}
-    ifr.referrerPolicy="strict-origin-when-cross-origin";ifr.src="https://www.youtube.com/embed/"+id+"?enablejsapi=1&autoplay=1&playsinline=1&rel=0"+o;
-    ifr.onload=listen;
+    ifr.referrerPolicy="strict-origin-when-cross-origin";ifr.src="https://www.youtube.com/embed/"+id+"?enablejsapi=1&autoplay=1&playsinline=1&rel=0"+(st?"&start="+st:"")+o;
+    ifr.onload=()=>{listen();setTimeout(applyVol,1500)};
     $("#pslot").appendChild(ifr);
-  }else{send("loadVideoById",[id])}
+  }else{send("loadVideoById",[id,st])}
   ui();
 }
-const next=()=>playAt(pos+1);
+const next=()=>{if(live&&pos+1>=Q.length){liveCycle++;Q=liveQ(liveCycle);pos=-1}playAt(pos+1)};
 const prev=()=>playAt(pos-1);
-function startRadio(first){build(first);playAt(pos)}
+function startRadio(first){live=false;build(first);playAt(pos)}
 function stopRadio(){
-  document.body.classList.remove("pl-on");playing=false;clearInterval(listenTimer);
+  document.body.classList.remove("pl-on");playing=false;live=false;clearInterval(listenTimer);
   if(ifr){ifr.remove();ifr=null}
   cur=-1;Q=[];render();
 }
@@ -289,6 +301,22 @@ $("#pNext").onclick=next;$("#pPrev").onclick=prev;
 $("#pPlay").onclick=()=>{send(playing?"pauseVideo":"playVideo");playing=!playing;$("#pPlay").textContent=playing?"⏸":"▶"};
 $("#pShuf").onclick=()=>{shuf=!shuf;const c=cur;build(c);ui();toast(shuf?"Aléatoire activé":"Aléatoire désactivé")};
 $("#pX").onclick=stopRadio;
+/* ----- radio en direct : meme programme pour tout le monde (sons de base uniquement) ----- */
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const SLOT=210;
+function liveQ(c){const r=mulberry(c*2654435761+12345),a=BASE.map((_,i)=>i);for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function startLive(){live=true;const s=Date.now()/1000,sl=Math.floor(s/SLOT),n=BASE.length;liveCycle=Math.floor(sl/n);Q=liveQ(liveCycle);playAt(sl%n,0,Math.floor(s%SLOT))}
+$("#live").onclick=startLive;
+/* ----- volume ----- */
+function applyVol(){send("setVolume",[vol]);send(muted?"mute":"unMute")}
+function volUi(){$("#pVol").value=muted?0:vol;$("#pMute").textContent=muted||vol==0?"🔇":vol<40?"🔉":"🔊"}
+$("#pVol").oninput=e=>{vol=+e.target.value;muted=false;applyVol();volUi();store.set("rapfr_vol",vol)};
+$("#pMute").onclick=()=>{muted=!muted;applyVol();volUi()};
+const v0=store.get("rapfr_vol");if(v0!=null&&v0!=="")vol=+v0;volUi();
+/* ----- lien de la radio ----- */
+$("#rlink").onclick=async()=>{await copy(location.href.split("#")[0]+"#radio");toast("Lien de la radio copié")};
+if(location.hash==="#radio")$("#gate").hidden=false;
+$("#gateGo").onclick=()=>{$("#gate").hidden=true;startLive()};
 const t0=store.get("rapfr_title");if(t0)T.textContent=t0;
 const c0=store.get("rapfr_cover");if(c0)setCover(c0);
 renderChips();render();
