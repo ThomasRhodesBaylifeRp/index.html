@@ -93,7 +93,7 @@ body.pl-on .wrap{padding-bottom:210px}
     <div class="meta">
       <div class="kind">Playlist</div>
       <h1 id="title" contenteditable="true" spellcheck="false">Rap FR</h1>
-      <div class="sub"><span id="count"></span><button id="rm" hidden>Retirer la photo</button></div>
+      <div class="sub"><span id="count"></span><button id="rm" hidden>Retirer la photo</button><button id="fmt"></button></div>
       <div class="radio"><button class="add" id="live">🔴 Radio en direct</button><button class="cancel" id="radio">▶ Ma playlist</button><button class="cancel" id="rlink">🔗 Copier le lien de la radio</button></div>
     </div>
   </div>
@@ -140,7 +140,7 @@ const BASE=[
 const $=s=>document.querySelector(s);
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},
  set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v);return true}catch(e){return false}}};
-let artist="";
+let artist="";let fmt=store.get("rapfr_fmt")==="short"?"short":"long";
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove("on"),1600)}
 async function copy(text){
   try{await navigator.clipboard.writeText(text)}
@@ -214,7 +214,7 @@ function render(){
     d.querySelector(".pl").title="Lancer la radio à partir d’ici";
     d.querySelector(".pl").onclick=e=>{e.stopPropagation();startRadio(i)};
     const b=d.querySelector(".copy");
-    const go=async()=>{const yid=vid(r[2]);await copy(yid?V+yid:r[2]);b.textContent="Copié ✓";b.classList.add("done");toast("Lien copié");
+    const go=async()=>{const yid=vid(r[2]);await copy(yid?(fmt==="short"?"https://youtu.be/"+yid:V+yid):r[2]);b.textContent="Copié ✓";b.classList.add("done");toast("Lien copié");
       setTimeout(()=>{b.textContent="Copier";b.classList.remove("done")},1400)};
     d.onclick=go;
     if(i>=BASE.length){const x=document.createElement("button");x.className="del";x.title="Supprimer ce son";x.textContent="×";
@@ -316,6 +316,8 @@ const v0=store.get("rapfr_vol");if(v0!=null&&v0!=="")vol=+v0;volUi();
 /* ----- lien de la radio ----- */
 $("#rlink").onclick=async()=>{await copy(location.href.split("#")[0]+"#radio");toast("Lien de la radio copié")};
 if(location.hash==="#radio")$("#gate").hidden=false;
+function fmtUi(){$("#fmt").textContent="Lien : "+(fmt==="short"?"court":"long")}
+$("#fmt").onclick=()=>{fmt=fmt==="short"?"long":"short";store.set("rapfr_fmt",fmt);fmtUi();toast("Lien "+(fmt==="short"?"court (youtu.be)":"long (youtube.com)"))};fmtUi();
 $("#gateGo").onclick=()=>{$("#gate").hidden=true;startLive()};
 const t0=store.get("rapfr_title");if(t0)T.textContent=t0;
 const c0=store.get("rapfr_cover");if(c0)setCover(c0);
